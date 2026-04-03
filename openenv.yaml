@@ -1,0 +1,5 @@
+name: customer_support_env
+description: AI Customer Support Decision Environment
+version: 1.0
+
+entry_point: env:CustomerSupportEnv
