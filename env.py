@@ -7,25 +7,34 @@ class CustomerSupportEnv:
         import random
 
         queries = [
-            "My order is delayed",
-            "I got a damaged product",
-            "I want a refund immediately",
-            "My payment failed but money deducted"
+            {
+                "text": "My order is delayed and I was charged twice",
+                "true_issues": ["delivery", "payment"]
+            },
+            {
+                "text": "I got a damaged product and support is not responding",
+                "true_issues": ["product", "support"]
+            },
+            {
+                "text": "My payment failed but money got deducted",
+                "true_issues": ["payment"]
+            }
         ]
 
+        sample = random.choice(queries)
+
         self.state_data = {
-            "customer_query": random.choice(queries),
+            "customer_query": sample["text"],
+            "true_issues": sample["true_issues"],
+            "detected_issues": [],
+
             "customer_type": random.choice(["normal", "premium"]),
             "sentiment": random.choice(["calm", "angry"]),
 
-            "issue_type": None,
-            "true_issue": random.choice(["delivery", "other"]),  # hidden truth
-
             "history": [],
             "time_elapsed": 0,
-
-            "resolved": False,   # Step 6
-            "attempts": 0        # Step 6
+            "resolved": False,
+            "attempts": 0
         }
 
         return self.state_data
@@ -38,85 +47,94 @@ class CustomerSupportEnv:
         action_type = action.get("action_type")
         content = action.get("content", "")
 
-        # ✅ track attempts
+        # ✅ FIXED INDENTATION STARTS HERE
         self.state_data["attempts"] += 1
 
+        # 🚨 FAILURE CONDITION
+        if self.state_data["attempts"] > 4:
+            reward = -5
+            done = True
+
+            return {
+                "observation": self.state_data,
+                "reward": reward,
+                "done": done,
+                "info": {
+                    "attempts": self.state_data.get("attempts"),
+                    "time_elapsed": self.state_data.get("time_elapsed")
+                }
+            }
+
+        # CONTINUE FLOW
         query = self.state_data.get("customer_query", "").lower()
 
-        # ⛔ penalty for skipping steps
-        if action_type in ["respond", "offer_refund"] and self.state_data.get("issue_type") is None:
-            reward = -3
-            return {
-    "observation": self.state_data,
-    "reward": reward,
-    "done": done,
-    "info": {
-        "attempts": self.state_data.get("attempts"),
-        "time_elapsed": self.state_data.get("time_elapsed")
-    }
-}
-
-        # STEP 1: classify issue (uses hidden truth now)
         if action_type == "classify_issue":
-            if self.state_data["true_issue"] == "delivery":
-                self.state_data["issue_type"] = "delivery"
-                reward = 2
-            else:
-                self.state_data["issue_type"] = "other"
-                reward = 1
+            detected = []
 
-        # STEP 2: detect sentiment
+            if "order" in query or "delay" in query:
+                detected.append("delivery")
+
+            if "charged" in query or "payment" in query:
+                detected.append("payment")
+
+            if "damaged" in query:
+                detected.append("product")
+
+            if "support" in query:
+                detected.append("support")
+
+            self.state_data["detected_issues"] = list(set(detected))
+
+            correct = set(detected) & set(self.state_data["true_issues"])
+            reward += len(correct) * 2
+
+            if len(self.state_data["detected_issues"]) == 0:
+                reward -= 2
+
         elif action_type == "detect_sentiment":
             if content == self.state_data.get("sentiment"):
-                reward = 2
+                reward += 2
             else:
-                reward = -1
+                reward -= 1
 
-        # STEP 3: respond / refund (multi-turn enforced)
-        elif action_type in ["respond", "offer_refund"]:
-            if self.state_data["attempts"] >= 2:
+        elif action_type == "respond":
+            if "sorry" in content.lower():
+                self.state_data["sentiment"] = "calm"
+                reward += 1
+            else:
+                self.state_data["sentiment"] = "angry"
+                reward -= 1
+
+        elif action_type == "offer_refund":
+            if "payment" in self.state_data["true_issues"]:
+                reward += 3
+            else:
+                reward -= 4
+
+        elif action_type == "escalate":
+            if self.state_data["sentiment"] == "angry":
+                reward += 1
+            else:
+                reward -= 3
+
+        if set(self.state_data["detected_issues"]) == set(self.state_data["true_issues"]):
+            if action_type in ["respond", "offer_refund"]:
                 self.state_data["resolved"] = True
                 done = True
+                reward += 3
 
-                if action_type == "offer_refund" and self.state_data.get("issue_type") == "delivery":
-                    reward = 3
-                else:
-                    reward = 2
-            else:
-                reward = -1  # too early to resolve
-
-        # STEP 4: optional escalation
-        elif action_type == "escalate":
-            reward = 1
-
-        # ❌ WRONG ACTION PENALTIES
-        if action_type == "offer_refund" and self.state_data["customer_type"] == "normal":
-            reward -= 3
-
-        if action_type == "escalate" and self.state_data["sentiment"] == "calm":
-            reward -= 2
-
-        # 💰 BUSINESS COST SYSTEM
-        cost = 0
-        if action_type == "offer_refund":
-            cost = 5
-        elif action_type == "escalate":
-            cost = 3
-
-        reward -= cost * 0.5
-
-        # track history + time
         self.state_data["history"].append(action_type)
         self.state_data["time_elapsed"] += 1
 
         return {
-    "observation": self.state_data,
-    "reward": reward,
-    "done": done,
-    "info": {
-        "attempts": self.state_data.get("attempts"),
-        "time_elapsed": self.state_data.get("time_elapsed")
-    }
-}
+            "observation": self.state_data,
+            "reward": reward,
+            "done": done,
+            "info": {
+                "attempts": self.state_data["attempts"],
+                "time_elapsed": self.state_data["time_elapsed"]
+            }
+        }
+
     def state(self):
         return self.state_data
