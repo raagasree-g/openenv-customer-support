@@ -1,0 +1,5 @@
+{
+  "name": "Aegis-7: AI Support Agent",
+  "description": "An intelligent support decision engine that classifies, analyzes, and routes customer inquiries instantly using zero-latency heuristic models.",
+  "requestFramePermissions": []
+}
