@@ -1,3 +1,5 @@
+This environment is designed to evaluate agent decision-making under uncertainty, multi-step reasoning, and business trade-offs.
+
 # AI Customer Support Decision Engine
 
 ## Description

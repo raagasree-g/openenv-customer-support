@@ -40,34 +40,42 @@ class CustomerSupportEnv:
         return self.state_data
 
     def step(self, action):
+        import random
+
         reward = 0
         done = False
-        info = {}
 
         action_type = action.get("action_type")
         content = action.get("content", "")
 
-        # ✅ FIXED INDENTATION STARTS HERE
+        # 🔥 MEMORY PENALTY
+        repeat_count = self.state_data["history"].count(action_type)
+        if repeat_count > 0:
+            reward -= (1 + 0.5 * repeat_count)
+
+        # ⏱️ TIME PENALTY
+        reward -= 0.2
+
+        # TRACK ATTEMPTS
         self.state_data["attempts"] += 1
 
         # 🚨 FAILURE CONDITION
         if self.state_data["attempts"] > 4:
-            reward = -5
-            done = True
-
             return {
                 "observation": self.state_data,
-                "reward": reward,
-                "done": done,
+                "reward": -5,
+                "done": True,
                 "info": {
-                    "attempts": self.state_data.get("attempts"),
-                    "time_elapsed": self.state_data.get("time_elapsed")
+                    "attempts": self.state_data["attempts"],
+                    "time_elapsed": self.state_data["time_elapsed"]
                 }
             }
 
-        # CONTINUE FLOW
-        query = self.state_data.get("customer_query", "").lower()
+        query = self.state_data["customer_query"].lower()
 
+        # -----------------------------
+        # ACTION LOGIC
+        # -----------------------------
         if action_type == "classify_issue":
             detected = []
 
@@ -85,17 +93,23 @@ class CustomerSupportEnv:
 
             self.state_data["detected_issues"] = list(set(detected))
 
-            correct = set(detected) & set(self.state_data["true_issues"])
-            reward += len(correct) * 2
+            true_set = set(self.state_data["true_issues"])
+            detected_set = set(detected)
 
-            if len(self.state_data["detected_issues"]) == 0:
+            correct = detected_set & true_set
+            wrong = detected_set - true_set
+
+            reward += len(correct) * 2
+            reward -= len(wrong) * 1.5
+
+            if len(detected_set) == 0:
                 reward -= 2
 
         elif action_type == "detect_sentiment":
-            if content == self.state_data.get("sentiment"):
+            if content == self.state_data["sentiment"]:
                 reward += 2
             else:
-                reward -= 1
+                reward -= 1.5
 
         elif action_type == "respond":
             if "sorry" in content.lower():
@@ -107,9 +121,14 @@ class CustomerSupportEnv:
 
         elif action_type == "offer_refund":
             if "payment" in self.state_data["true_issues"]:
-                reward += 3
+                if random.random() < 0.85:
+                    reward += 3
+                else:
+                    reward -= 2
             else:
                 reward -= 4
+
+            reward -= 0.5
 
         elif action_type == "escalate":
             if self.state_data["sentiment"] == "angry":
@@ -117,12 +136,30 @@ class CustomerSupportEnv:
             else:
                 reward -= 3
 
+            reward -= 0.3
+
+        else:
+            reward -= 2
+
+        # -----------------------------
+        # ❌ WRONG RESOLUTION PENALTY (FIXED INDENTATION)
+        # -----------------------------
+        if action_type in ["respond", "offer_refund"]:
+            if set(self.state_data["detected_issues"]) != set(self.state_data["true_issues"]):
+                reward -= 3
+
+        # -----------------------------
+        # ✅ SUCCESS RESOLUTION
+        # -----------------------------
         if set(self.state_data["detected_issues"]) == set(self.state_data["true_issues"]):
             if action_type in ["respond", "offer_refund"]:
                 self.state_data["resolved"] = True
                 done = True
                 reward += 3
 
+        # -----------------------------
+        # UPDATE STATE
+        # -----------------------------
         self.state_data["history"].append(action_type)
         self.state_data["time_elapsed"] += 1
 
