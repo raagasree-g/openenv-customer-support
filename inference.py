@@ -1,112 +1,104 @@
-from env import CustomerSupportEnv
+import os
+from openenv_logistics.environment import LogisticsEnv
+from openenv_logistics.models import EnvAction
+
+MODEL_NAME = "baseline-agent"
+TASKS = ["easy", "medium", "hard"]
+MAX_STEPS = 20
 
 
-# -------------------------
-# AGENT LOGIC
-# -------------------------
+last_demand = None
 def get_agent_action(state):
-    detected = state.get("detected_issues", [])
-    sentiment = state.get("sentiment")
+    inv = state["inventory"]
+    backlog = state["backlog"]
+    demand = state["demand"]
 
-    # Step 1: detect issues
-    if not detected:
-        return {"action_type": "classify_issue"}
+    warehouse = inv["warehouse"]
+    retail = inv["retail"]
+    factory = inv["factory"]
 
-    # Step 2: detect sentiment
-    if sentiment == "angry":
-        return {
-            "action_type": "respond",
-            "content": "Sorry, we are resolving this urgently."
-        }
+    # -------------------------
+    # BALANCED TARGETS
+    # -------------------------
+    target_retail = demand + 3
+    target_wh = demand * 1.4
 
-    # Step 3: resolution decision
-    if "payment" in detected:
-        return {"action_type": "offer_refund"}
+    wh_to_retail = 0
+    factory_to_wh = 0
 
-    return {"action_type": "respond", "content": "We are working on your issue."}
+    # -------------------------
+    # RETAIL SUPPLY (adaptive)
+    # -------------------------
+    if retail < target_retail:
+        deficit = target_retail - retail
+        wh_to_retail = min(deficit, warehouse, 18)
 
+    # -------------------------
+    # WAREHOUSE REFILL (moderate)
+    # -------------------------
+    if warehouse < target_wh:
+        deficit = target_wh - warehouse
+        factory_to_wh = min(deficit, 25)
 
-# -------------------------
-# RUN SINGLE EPISODE
-# -------------------------
-def run_episode(env, episode_id):
-    state = env.reset()
+    # -------------------------
+    # BACKLOG HANDLING (priority)
+    # -------------------------
+    if backlog["retail"] > 0:
+        wh_to_retail = min(20, warehouse)
+
+    if backlog["warehouse"] > 0:
+        factory_to_wh = min(30, factory)
+
+    return EnvAction(
+        factory_to_wh=int(factory_to_wh),
+        wh_to_retail=int(wh_to_retail)
+    )
+
+def run_episode(env, task):
+    state = env.reset().model_dump()
     done = False
-    total_reward = 0
-    step_count = 0
-    MAX_STEPS = 10
+    step = 0
+    rewards = []
 
-    print(f"\n=== EPISODE {episode_id} ===")
-    print("Customer Query:", state["customer_query"])
-    print("Initial Sentiment:", state["sentiment"])
-    print("-" * 50)
+    print(f"[START] task={task} env=openenv-logistics model={MODEL_NAME}")
 
-    while not done and step_count < MAX_STEPS:
-        step_count += 1
-
+    while not done and step < MAX_STEPS:
+        step += 1
         action = get_agent_action(state)
 
         result = env.step(action)
+        state = result.state.model_dump()
 
-        state = result["observation"]
-        reward = result["reward"]
-        done = result["done"]
+        reward = float(result.reward)
+        done = result.done
 
-        total_reward += reward
+        rewards.append(f"{reward:.2f}")
 
-        print(f"[STEP {step_count}]")
-        print(f"Action: {action}")
-        print(f"Reward: {reward:.2f}")
-        print(f"Detected Issues: {state.get('detected_issues')}")
-        print(f"Sentiment: {state.get('sentiment')}")
-        print("-" * 30)
+        print(f"[STEP] step={step} action={action.model_dump()} reward={reward:.2f} done={'true' if done else 'false'} error=null")
 
-    # -------------------------
-    # FINAL STATUS
-    # -------------------------
-    if state.get("resolved"):
-        print("✅ RESOLVED")
-    else:
-        print("❌ FAILED")
+    backlog_total = sum(state["backlog"].values())
+    inventory_total = sum(state["inventory"].values())
 
-    print(f"Total Reward: {total_reward:.2f}")
-    print("=" * 50)
+    inventory_total = sum(state["inventory"].values())
+    backlog_total = sum(state["backlog"].values())
 
-    return total_reward, state
+    score = max(0.0, min(1.0,
+    0.7 * (1 - backlog_total / 150) +
+    0.3 * (inventory_total / 200)
+))
+
+    success = score > 0.35
 
 
-# -------------------------
-# MULTI-EPISODE EVALUATION
-# -------------------------
-def evaluate_agent(env, num_episodes=5):
-    scores = []
-    successes = 0
-
-    for i in range(1, num_episodes + 1):
-        score, state = run_episode(env, i)
-        scores.append(score)
-
-        if state.get("resolved"):
-            successes += 1
-
-    avg_score = sum(scores) / len(scores)
-
-    print("\n===== FINAL EVALUATION =====")
-    print(f"Episodes: {num_episodes}")
-    print(f"Success Rate: {successes}/{num_episodes}")
-    print(f"Average Score: {avg_score:.2f}")
-    print("============================\n")
+    print(f"[END] success={'true' if success else 'false'} steps={step} score={score:.2f} rewards={','.join(rewards)}")
 
 
-# -------------------------
-# MAIN
-# -------------------------
 def main():
-    env = CustomerSupportEnv()
+    tasks = ["easy", "medium", "hard"]
 
-    print("🚀 Starting Customer Support Environment Evaluation")
-
-    evaluate_agent(env, num_episodes=5)
+    for task in tasks:
+        env = LogisticsEnv(config={"difficulty": task})
+        run_episode(env, task)
 
 
 if __name__ == "__main__":
