@@ -1,114 +1,112 @@
-import json
-import os
-import random
-from typing import Any, Dict, List
-
-from openai import OpenAI
-
-from openenv_logistics.environment import LogisticsEnv
-from openenv_logistics.models import EnvAction, EnvState
-from openenv_logistics.tasks import TASKS
-
-# Environment variables
-API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
-MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
-HF_TOKEN = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
-TASK_NAME = os.getenv("MY_ENV_V4_TASK", "inventory-balancing")
-BENCHMARK = os.getenv("MY_ENV_V4_BENCHMARK", "LogisticsFlow-v1")
-MAX_STEPS = 52
+from env import CustomerSupportEnv
 
 
-def get_agent_action(client: OpenAI, state: EnvState) -> EnvAction:
-    """
-    Simple agent using LLM to decide replenishment quantities.
-    In a real scenario, this would be a trained RL agent or a more complex prompt.
-    For the baseline, we'll use a prompt that asks the model to decide.
-    """
-    prompt = f"""
-    You are a supply chain manager. Current state:
-    - Week: {state.week}
-    - Demand: {state.demand}
-    - Inventory: Factory={state.inventory.factory}, Warehouse={state.inventory.warehouse}, Retail={state.inventory.retail}
-    - Backlog: Factory={state.backlog.factory}, Warehouse={state.backlog.warehouse}, Retail={state.backlog.retail}
-    - In-Transit: To Warehouse={state.in_transit.to_warehouse}, To Retail={state.in_transit.to_retail}
+# -------------------------
+# AGENT LOGIC
+# -------------------------
+def get_agent_action(state):
+    detected = state.get("detected_issues", [])
+    sentiment = state.get("sentiment")
 
-    Decide the replenishment quantities for:
-    1. Factory to Warehouse (factory_to_wh)
-    2. Warehouse to Retail (wh_to_retail)
+    # Step 1: detect issues
+    if not detected:
+        return {"action_type": "classify_issue"}
 
-    Respond in JSON format: {{"factory_to_wh": int, "wh_to_retail": int}}
-    """
+    # Step 2: detect sentiment
+    if sentiment == "angry":
+        return {
+            "action_type": "respond",
+            "content": "Sorry, we are resolving this urgently."
+        }
 
-    try:
-        response = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a supply chain manager. Respond only with JSON.",
-                },
-                {"role": "user", "content": prompt},
-            ],
-            response_format={"type": "json_object"},
-        )
-        data = json.loads(response.choices[0].message.content)
-        return EnvAction(
-            factory_to_wh=data.get("factory_to_wh", 20),
-            wh_to_retail=data.get("wh_to_retail", 15),
-        )
-    except Exception as e:
-        # Fallback to simple heuristic if LLM fails
-        return EnvAction(
-            factory_to_wh=max(0, 50 - state.inventory.warehouse),
-            wh_to_retail=max(0, 30 - state.inventory.retail),
-        )
+    # Step 3: resolution decision
+    if "payment" in detected:
+        return {"action_type": "offer_refund"}
+
+    return {"action_type": "respond", "content": "We are working on your issue."}
 
 
-def main():
-    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
-
-    # Initialize task and environment
-    task_info = TASKS.get(TASK_NAME, TASKS["inventory-balancing"])
-    env = LogisticsEnv(config=task_info["config"])
-    grader = task_info["grader"]
-
+# -------------------------
+# RUN SINGLE EPISODE
+# -------------------------
+def run_episode(env, episode_id):
     state = env.reset()
-    history = []
-    rewards = []
+    done = False
+    total_reward = 0
+    step_count = 0
+    MAX_STEPS = 10
 
-    print(f"[START] task={TASK_NAME} env={BENCHMARK} model={MODEL_NAME}")
+    print(f"\n=== EPISODE {episode_id} ===")
+    print("Customer Query:", state["customer_query"])
+    print("Initial Sentiment:", state["sentiment"])
+    print("-" * 50)
 
-    for step in range(1, MAX_STEPS + 1):
-        action = get_agent_action(client, state)
+    while not done and step_count < MAX_STEPS:
+        step_count += 1
+
+        action = get_agent_action(state)
+
         result = env.step(action)
 
-        state = result.state
-        rewards.append(result.reward)
-        history.append(
-            {
-                "step": step,
-                "action": action.dict(),
-                "reward": result.reward,
-                "state": state.dict(),
-                "info": result.info,
-            }
-        )
+        state = result["observation"]
+        reward = result["reward"]
+        done = result["done"]
 
-        print(
-            f"[STEP] step={step} action={json.dumps(action.dict())} reward={result.reward:.2f} done={'true' if result.done else 'false'} error=null"
-        )
+        total_reward += reward
 
-        if result.done:
-            break
+        print(f"[STEP {step_count}]")
+        print(f"Action: {action}")
+        print(f"Reward: {reward:.2f}")
+        print(f"Detected Issues: {state.get('detected_issues')}")
+        print(f"Sentiment: {state.get('sentiment')}")
+        print("-" * 30)
 
-    # Final scoring
-    score = grader.grade(history)
-    success = score > 0.5
+    # -------------------------
+    # FINAL STATUS
+    # -------------------------
+    if state.get("resolved"):
+        print("✅ RESOLVED")
+    else:
+        print("❌ FAILED")
 
-    rewards_str = ",".join([f"{r:.2f}" for r in rewards])
-    print(
-        f"[END] success={'true' if success else 'false'} steps={len(history)} score={score:.2f} rewards={rewards_str}"
-    )
+    print(f"Total Reward: {total_reward:.2f}")
+    print("=" * 50)
+
+    return total_reward, state
+
+
+# -------------------------
+# MULTI-EPISODE EVALUATION
+# -------------------------
+def evaluate_agent(env, num_episodes=5):
+    scores = []
+    successes = 0
+
+    for i in range(1, num_episodes + 1):
+        score, state = run_episode(env, i)
+        scores.append(score)
+
+        if state.get("resolved"):
+            successes += 1
+
+    avg_score = sum(scores) / len(scores)
+
+    print("\n===== FINAL EVALUATION =====")
+    print(f"Episodes: {num_episodes}")
+    print(f"Success Rate: {successes}/{num_episodes}")
+    print(f"Average Score: {avg_score:.2f}")
+    print("============================\n")
+
+
+# -------------------------
+# MAIN
+# -------------------------
+def main():
+    env = CustomerSupportEnv()
+
+    print("🚀 Starting Customer Support Environment Evaluation")
+
+    evaluate_agent(env, num_episodes=5)
 
 
 if __name__ == "__main__":
