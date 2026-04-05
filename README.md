@@ -1,81 +1,20 @@
+# OpenEnv Customer Support Decision Engine (RL Environment)
+
 This environment simulates real-world customer support decision-making where agents must balance customer satisfaction, cost, and uncertainty across multiple issues.
 
-# AI Customer Support Decision Engine
+---
 
-## Description
-Simulates a customer support environment where an agent must classify issues, detect sentiment, and take actions.
+## 🚀 Problem Statement
 
-## Actions
-- classify_issue
-- detect_sentiment
-- respond
-- offer_refund
-- escalate
+Build an environment where an AI agent must:
+- Understand customer queries
+- Detect multiple hidden issues
+- Choose actions (respond, refund, escalate)
+- Balance business cost vs customer satisfaction
 
-## How to Run
-python inference.py
+---
 
-## Reward Design
-- Partial rewards for correct steps
-- Penalties for skipping steps
-- Time-based penalty for inefficiency
-
-## Real-world Factors
-- Customer type affects decisions
-- Cost of refund vs escalation
-- Multi-step resolution required
-
-## Environment Design
-
-This environment simulates real-world customer support decision-making with:
-
-- Multi-step reasoning (classification → sentiment → resolution)
-- Partial reward shaping (not binary success/failure)
-- Business cost modeling (refund vs escalation trade-offs)
-- Time-based penalties for inefficiency
-
-## Why This Matters
-
-Unlike simple environments, this system evaluates:
-
-- decision quality over multiple steps
-- trade-offs between customer satisfaction and cost
-- realistic agent behavior in support scenarios
-
-## Example Run
-
-Step 1 | classify_issue → Reward: +2  
-Step 2 | detect_sentiment → Reward: +2  
-Step 3 | respond → Reward: +3  
-
-Final Score: 8/10
-
-## Advanced Features
-
-- Multi-issue detection (not single-label classification)
-- Decision branching with multiple valid strategies
-- Business cost modeling (refund vs escalation trade-offs)
-- Dynamic customer behavior (sentiment evolves)
-- Failure penalties for inefficient agents
-
-## Evaluation Results
-
-The baseline agent was tested across multiple episodes:
-
-Episode 1 → Score: 6.2  
-Episode 2 → Score: 3.8  
-Episode 3 → Score: 7.1  
-Episode 4 → Score: 2.5 (failure case)  
-Episode 5 → Score: 6.9  
-
-Average Score: ~5.3
-
-This demonstrates:
-- variability in outcomes
-- presence of failure cases
-- non-trivial decision-making complexity
-
-## Core Idea
+## 🧠 Core Idea
 
 Unlike simple environments, this system forces agents to:
 
@@ -84,36 +23,117 @@ Unlike simple environments, this system forces agents to:
 3. Balance business cost against customer satisfaction  
 4. Avoid inefficient or repetitive actions  
 
-This creates a non-trivial decision-making problem rather than a one-step solution.
+This creates a **non-trivial decision-making problem**, not a one-step solution.
 
-## What Makes This Challenging?
+---
+
+## ⚙️ Actions
+
+- `classify_issue`
+- `detect_sentiment`
+- `respond`
+- `offer_refund`
+- `escalate`
+
+---
+
+## 🔄 Interaction Flow
+
+Agent → Action → Environment → Observation + Reward → Loop → Final Outcome
+
+---
+
+## 🔥 What Makes This Challenging?
 
 Example:
 
-Query: "I was charged twice and my order is delayed"
+**Query:**  
+"I was charged twice and my order is delayed"
 
-Correct behavior:
+### ✅ Correct Behavior
 - Detect BOTH payment + delivery issues  
-- Decide whether refund is justified  
-- Respond appropriately without unnecessary cost  
+- Choose appropriate resolution strategy  
+- Avoid unnecessary cost  
 
-Incorrect behavior:
-- Only detect one issue → partial failure  
+### ❌ Incorrect Behavior
+- Detect only one issue → partial failure  
 - Refund unnecessarily → business loss  
 - Delay response → customer dissatisfaction  
 
-## Failure Cases
+---
+
+## ⚖️ Reward Design
+
+- Partial rewards for correct intermediate steps  
+- Penalties for skipping required steps  
+- Cost-based penalties (refund vs escalation)  
+- Time-based penalties for inefficiency  
+- Failure penalties for incorrect decisions  
+
+---
+
+## 🌍 Real-World Factors Modeled
+
+- Multi-issue customer queries  
+- Customer sentiment (dynamic)  
+- Customer type (premium vs normal)  
+- Business cost trade-offs  
+- Multi-step resolution process  
+
+---
+
+## 💡 Advanced Features
+
+- Multi-issue detection (not single-label classification)  
+- Decision branching with multiple valid strategies  
+- Dynamic customer behavior (sentiment evolves)  
+- Failure cases and penalties  
+- Non-deterministic outcomes  
+
+---
+
+## ❌ Failure Cases
 
 Agents can fail if they:
-- miss one of multiple issues  
-- choose costly actions unnecessarily  
-- take too many steps  
-- repeat ineffective actions  
+- Miss one of multiple issues  
+- Choose costly or incorrect actions  
+- Take too many steps  
+- Repeat ineffective actions  
 
-This ensures the environment meaningfully evaluates agent quality.
+This ensures meaningful evaluation of agent performance.
 
-## Interaction Flow
+---
 
-Agent → Action → Environment → Updated State + Reward → Loop → Final Outcome
+## 📊 Evaluation Results
 
-This environment is designed to evaluate decision-making under uncertainty rather than generate responses.
+Baseline agent performance across multiple episodes:
+
+Episode 1 → Score: 6.2  
+Episode 2 → Score: 3.8  
+Episode 3 → Score: 7.1  
+Episode 4 → Score: 2.5 (failure case)  
+Episode 5 → Score: 6.9  
+
+**Average Score:** ~5.3  
+
+This demonstrates:
+- variability in outcomes  
+- presence of failure cases  
+- non-trivial decision-making complexity  
+
+---
+
+## ▶️ Example Run
+
+Step 1 | classify_issue → Reward: +2  
+Step 2 | detect_sentiment → Reward: +2  
+Step 3 | respond → Reward: +3  
+
+Final Score: 8/10  
+
+---
+
+## ▶️ How to Run
+
+```bash
+python inference.py
