@@ -1,4 +1,4 @@
-This environment is designed to evaluate agent decision-making under uncertainty, multi-step reasoning, and business trade-offs.
+This environment simulates real-world customer support decision-making where agents must balance customer satisfaction, cost, and uncertainty across multiple issues.
 
 # AI Customer Support Decision Engine
 
@@ -74,3 +74,46 @@ This demonstrates:
 - variability in outcomes
 - presence of failure cases
 - non-trivial decision-making complexity
+
+## Core Idea
+
+Unlike simple environments, this system forces agents to:
+
+1. Detect multiple hidden issues from a single query  
+2. Decide between competing actions (refund vs escalation vs response)  
+3. Balance business cost against customer satisfaction  
+4. Avoid inefficient or repetitive actions  
+
+This creates a non-trivial decision-making problem rather than a one-step solution.
+
+## What Makes This Challenging?
+
+Example:
+
+Query: "I was charged twice and my order is delayed"
+
+Correct behavior:
+- Detect BOTH payment + delivery issues  
+- Decide whether refund is justified  
+- Respond appropriately without unnecessary cost  
+
+Incorrect behavior:
+- Only detect one issue → partial failure  
+- Refund unnecessarily → business loss  
+- Delay response → customer dissatisfaction  
+
+## Failure Cases
+
+Agents can fail if they:
+- miss one of multiple issues  
+- choose costly actions unnecessarily  
+- take too many steps  
+- repeat ineffective actions  
+
+This ensures the environment meaningfully evaluates agent quality.
+
+## Interaction Flow
+
+Agent → Action → Environment → Updated State + Reward → Loop → Final Outcome
+
+This environment is designed to evaluate decision-making under uncertainty rather than generate responses.
