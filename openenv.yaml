@@ -1,5 +1,20 @@
-name: customer_support_env
-description: AI Customer Support Decision Environment
+name: openenv-logistics
+description: Multi-stage logistics supply chain optimization environment with inventory, backlog, and demand variability.
+
 version: 1.0
 
-entry_point: env:CustomerSupportEnv
+entry_point: inference.py
+
+tasks:
+  - id: easy
+    description: Low demand variability, stable supply chain
+
+  - id: medium
+    description: Moderate demand fluctuations with occasional backlog
+
+  - id: hard
+    description: High demand variability with significant backlog challenges
+
+requirements:
+  - python>=3.8
+  - numpy
